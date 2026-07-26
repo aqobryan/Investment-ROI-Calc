@@ -19,3 +19,5 @@ pip install -r requirements.txt
 
 Run this
 python main.py
+
+NONE OF THIS IS FINANCIAL ADVICE I AM NOT A FINANCIAL ADVISOR.
