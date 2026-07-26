@@ -1,13 +1,17 @@
 import math
+import numpy as np
 import yfinance as yf
+
+# Pool of major stocks & market ETFs to scan efficiently
+STOCK_POOL = [
+    "SPY", "QQQ", "VOO", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", 
+    "META", "BRK-B", "LLY", "AVGO", "JPM", "TSLA", "V", "MA", 
+    "UNH", "COST", "XOM", "HD", "PG", "JNJ", "ABBV", "BAC", "WMT"
+]
 
 class ROICalculator:
     @staticmethod
     def project_growth(initial_amount: float, annual_return_pct: float, years: float, annual_contribution: float = 0.0) -> dict:
-        """
-        Calculates future value using initial amount, annual return rate, years,
-        and annual equivalent contribution.
-        """
         if initial_amount <= 0:
             raise ValueError("Investment has to be greater than 0")
         if years <= 0:
@@ -15,10 +19,8 @@ class ROICalculator:
 
         rate = annual_return_pct / 100.0
         
-        # Future Value of initial lump sum: PV * (1 + r)^n
         fv_initial = initial_amount * ((1 + rate) ** years)
         
-        # Future Value of annual contributions (Annuity Formula): PMT * (((1 + r)^n - 1) / r)
         if rate != 0:
             fv_contributions = annual_contribution * (((1 + rate) ** years - 1) / rate)
         else:
@@ -41,24 +43,48 @@ class ROICalculator:
         }
 
     @staticmethod
-    def calculate_required_cagr(initial_amount: float, target_amount: float, years: float) -> dict:
+    def calculate_required_cagr(initial_amount: float, target_amount: float, years: float, annual_contribution: float = 0.0) -> dict:
         if initial_amount <= 0:
             raise ValueError("Investment has to be greater than 0")
         if target_amount <= 0 or years <= 0:
             raise ValueError("Target amount and years must be greater than zero.")
 
-        cagr_decimal = (target_amount / initial_amount) ** (1.0 / years) - 1.0
-        cagr_pct = cagr_decimal * 100.0
-        total_profit = target_amount - initial_amount
-        total_roi_pct = (total_profit / initial_amount) * 100.0
+        total_invested = initial_amount + (annual_contribution * years)
+        if target_amount <= total_invested:
+            raise ValueError("Target amount must be greater than total out-of-pocket contributions.")
+
+        # Numerical solver (Binary Search) to solve for required annual interest rate with contributions
+        low = -0.999
+        high = 10.0  # Max 1000% annual return search ceiling
+        rate = 0.0
+
+        for _ in range(100):  # Binary search iterations for high precision
+            mid = (low + high) / 2.0
+            r = mid
+            
+            if r != 0:
+                fv_calculated = (initial_amount * ((1 + r) ** years)) + (annual_contribution * (((1 + r) ** years - 1) / r))
+            else:
+                fv_calculated = initial_amount + (annual_contribution * years)
+
+            if fv_calculated < target_amount:
+                low = mid
+            else:
+                high = mid
+
+        cagr_pct = mid * 100.0
+        total_profit = target_amount - total_invested
+        total_roi_pct = (total_profit / total_invested) * 100.0
 
         return {
             "initial_amount": round(initial_amount, 2),
+            "annual_contribution": round(annual_contribution, 2),
+            "total_invested": round(total_invested, 2),
             "target_amount": round(target_amount, 2),
             "required_cagr_pct": round(cagr_pct, 2),
             "total_profit": round(total_profit, 2),
             "total_roi_pct": round(total_roi_pct, 2),
-            "multiplier": round(target_amount / initial_amount, 2),
+            "multiplier": round(target_amount / total_invested, 2),
             "years": years
         }
 
@@ -75,8 +101,54 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 5) -> float:
     cagr = ((end_price / start_price) ** (1.0 / years) - 1.0) * 100.0
     return round(cagr, 2)
 
+def scan_matching_stocks(target_cagr: float, hist_years: int = 5, top_n: int = 5):
+    """Scans predefined stock list for tickers meeting/exceeding target CAGR and ranks by stability."""
+    print(f"\nScanning market pool for stocks meeting/exceeding ~{target_cagr}% annual growth over the past {hist_years} years...")
+    
+    results = []
+
+    for symbol in STOCK_POOL:
+        try:
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period=f"{hist_years}y")
+            
+            if hist.empty or len(hist) < 20:
+                continue
+
+            start_price = hist['Close'].iloc[0]
+            end_price = hist['Close'].iloc[-1]
+            
+            actual_cagr = ((end_price / start_price) ** (1.0 / hist_years) - 1.0) * 100.0
+            
+            if actual_cagr >= target_cagr:
+                annual_returns = hist['Close'].resample('YE').ffill().pct_change().dropna()
+                volatility = annual_returns.std() * 100 if len(annual_returns) > 1 else 999.0
+
+                results.append({
+                    "symbol": symbol,
+                    "cagr": round(actual_cagr, 2),
+                    "volatility": round(volatility, 2)
+                })
+        except Exception:
+            continue
+
+    if not results:
+        print(f"\nNo stocks in the scan pool achieved a historical CAGR of {target_cagr}% or higher over the past {hist_years} years.")
+        return
+
+    sorted_results = sorted(results, key=lambda x: x['volatility'])[:top_n]
+
+    print("\n" + "=" * 60)
+    print(f" TOP {len(sorted_results)} CONSISTENT STOCKS MATCHING YOUR GOAL ({target_cagr}%+ CAGR)")
+    print("=" * 60)
+    print(f"{'Ticker':<8} | {'Past CAGR':<12} | {'Volatility (Risk)':<18} | {'Status'}")
+    print("-" * 60)
+
+    for item in sorted_results:
+        vol_label = "Very Stable" if item['volatility'] < 25 else "Moderate" if item['volatility'] < 45 else "High Growth/Volatile"
+        print(f"{item['symbol']:<8} | {item['cagr']}%{' ':<5} | {item['volatility']}%{' ':<12} | {vol_label}")
+
 def prompt_contribution() -> float:
-    """Displays contribution frequency menu and returns equivalent annual contribution."""
     print("\nSelect Contribution Frequency:")
     print("1. Annual")
     print("2. Monthly")
@@ -146,15 +218,22 @@ def main():
                 input("\nPress ENTER to return to the main menu...")
                 continue
 
-            target = float(input("Desired End Target ($): "))
+            contrib = prompt_contribution()
+            target = float(input("\nDesired End Target ($): "))
             years = float(input("How many years are you wanting to hold it for? "))
             
             try:
-                res = calc.calculate_required_cagr(pv, target, years)
+                res = calc.calculate_required_cagr(pv, target, years, annual_contribution=contrib)
                 print(f"\n--- TARGET GOAL RESULTS ---")
-                print(f"Required Annual CAGR: {res['required_cagr_pct']}%")
-                print(f"Total Gain Needed:    ${res['total_profit']:,}")
-                print(f"Growth Target:        {res['multiplier']}x initial capital")
+                print(f"Total Invested Out-of-Pocket: ${res['total_invested']:,}")
+                print(f"Required Annual CAGR:         {res['required_cagr_pct']}%")
+                print(f"Total Gain Needed:            ${res['total_profit']:,}")
+                print(f"Growth Target:                {res['multiplier']}x initial capital")
+                
+                # Automatically run the scan using 5 years of historical data
+                print("\n" + "-" * 45)
+                scan_matching_stocks(target_cagr=res['required_cagr_pct'], hist_years=5, top_n=5)
+
             except ValueError as e:
                 print(f"\nError: {e}")
 
