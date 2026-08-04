@@ -56,7 +56,6 @@ class ROICalculator:
         # Numerical solver (Binary Search) to solve for required annual interest rate with contributions
         low = -0.999
         high = 10.0  # Max 1000% annual return search ceiling
-        rate = 0.0
 
         for _ in range(100):  # Binary search iterations for high precision
             mid = (low + high) / 2.0
@@ -88,49 +87,77 @@ class ROICalculator:
             "years": years
         }
 
-def get_ticker_cagr(ticker_symbol: str, years: int = 5) -> float:
+def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     stock = yf.Ticker(ticker_symbol)
     hist = stock.history(period=f"{years}y")
     
-    if hist.empty or len(hist) < 2:
+    if hist.empty:
         raise ValueError(f"Could not fetch historical data for {ticker_symbol}")
 
-    start_price = hist['Close'].iloc[0]
-    end_price = hist['Close'].iloc[-1]
+    close_data = hist['Close']
+    if hasattr(close_data, 'squeeze'):
+        close_data = close_data.squeeze()
     
+    close_series = close_data.dropna()
+
+    if close_series.empty or len(close_series) < 2:
+        raise ValueError(f"Not enough valid historical price points for {ticker_symbol}")
+
+    start_price = float(close_series.iloc[0])
+    end_price = float(close_series.iloc[-1])
+
+    if start_price <= 0:
+        raise ValueError(f"Invalid starting price for {ticker_symbol}")
+
     cagr = ((end_price / start_price) ** (1.0 / years) - 1.0) * 100.0
     return round(cagr, 2)
 
-def scan_matching_stocks(target_cagr: float, hist_years: int = 5, top_n: int = 5):
-    """Scans predefined stock list for tickers meeting/exceeding target CAGR and ranks by stability."""
+def scan_matching_stocks(target_cagr: float, initial_amount: float, years: float, annual_contribution: float = 0.0, hist_years: int = 10, top_n: int = 5):
+    """Batch scans predefined stock list for tickers meeting/exceeding target CAGR over hist_years (default 10) and calculates portfolio projections."""
     print(f"\nScanning market pool for stocks meeting/exceeding ~{target_cagr}% annual growth over the past {hist_years} years...")
     
     results = []
+    calc = ROICalculator()
 
-    for symbol in STOCK_POOL:
-        try:
-            stock = yf.Ticker(symbol)
-            hist = stock.history(period=f"{hist_years}y")
-            
-            if hist.empty or len(hist) < 20:
+    try:
+        # Batch download all tickers at once to avoid rate limiting
+        data = yf.download(STOCK_POOL, period=f"{hist_years}y", progress=False)['Close']
+        
+        for symbol in STOCK_POOL:
+            if symbol not in data:
                 continue
 
-            start_price = hist['Close'].iloc[0]
-            end_price = hist['Close'].iloc[-1]
-            
+            close_series = data[symbol].dropna()
+
+            if close_series.empty or len(close_series) < 20:
+                continue
+
+            start_price = float(close_series.iloc[0])
+            end_price = float(close_series.iloc[-1])
+
+            if start_price <= 0:
+                continue
+
             actual_cagr = ((end_price / start_price) ** (1.0 / hist_years) - 1.0) * 100.0
-            
+
             if actual_cagr >= target_cagr:
-                annual_returns = hist['Close'].resample('YE').ffill().pct_change().dropna()
-                volatility = annual_returns.std() * 100 if len(annual_returns) > 1 else 999.0
+                # Calculate annualized daily volatility (%) for backend sorting stability
+                daily_returns = close_series.pct_change().dropna()
+                volatility = float(daily_returns.std() * np.sqrt(252) * 100) if len(daily_returns) > 1 else 999.0
+
+                # Calculate projected performance for this individual stock
+                proj = calc.project_growth(initial_amount, actual_cagr, years, annual_contribution)
 
                 results.append({
                     "symbol": symbol,
                     "cagr": round(actual_cagr, 2),
-                    "volatility": round(volatility, 2)
+                    "volatility": round(volatility, 2),
+                    "future_value": proj['future_value'],
+                    "total_profit": proj['total_profit']
                 })
-        except Exception:
-            continue
+
+    except Exception as e:
+        print(f"Market scan error: {e}")
 
     if not results:
         print(f"\nNo stocks in the scan pool achieved a historical CAGR of {target_cagr}% or higher over the past {hist_years} years.")
@@ -139,14 +166,13 @@ def scan_matching_stocks(target_cagr: float, hist_years: int = 5, top_n: int = 5
     sorted_results = sorted(results, key=lambda x: x['volatility'])[:top_n]
 
     print("\n" + "=" * 60)
-    print(f" TOP {len(sorted_results)} CONSISTENT STOCKS MATCHING YOUR GOAL ({target_cagr}%+ CAGR)")
+    print(f" TOP {len(sorted_results)} CONSISTENT STOCKS MATCHING YOUR GOAL ({target_cagr}%+ CAGR over past {hist_years} years)")
     print("=" * 60)
-    print(f"{'Ticker':<8} | {'Past CAGR':<12} | {'Volatility (Risk)':<18} | {'Status'}")
+    print(f"{'Ticker':<7} | {'10yr AVG CAGR':<13} | {'Projected Value':<17} | {'Net Profit'}")
     print("-" * 60)
 
     for item in sorted_results:
-        vol_label = "Very Stable" if item['volatility'] < 25 else "Moderate" if item['volatility'] < 45 else "High Growth/Volatile"
-        print(f"{item['symbol']:<8} | {item['cagr']}%{' ':<5} | {item['volatility']}%{' ':<12} | {vol_label}")
+        print(f"{item['symbol']:<7} | {item['cagr']}%{' ':<7} | ${item['future_value']:<16,} | ${item['total_profit']:,}")
 
 def prompt_contribution() -> float:
     print("\nSelect Contribution Frequency:")
@@ -181,7 +207,7 @@ def main():
 
     while True:
         print("\n" + "=" * 45)
-        print("      INVESTMENT ROI CALCULATOR (PYTHON)")
+        print("        INVESTMENT ROI CALCULATOR")
         print("=" * 45)
         print("1. Forward Growth Projection")
         print("2. Find Required CAGR (Target Goal Mode)")
@@ -208,6 +234,11 @@ def main():
                 print(f"Future Projected Value:       ${res['future_value']:,}")
                 print(f"Total Net Profit:             ${res['total_profit']:,}")
                 print(f"Total Return (ROI):           {res['total_roi_pct']}% ({res['multiplier']}x)")
+                
+                # Automatically scan market pool using 10 years of historical data
+                print("\n" + "-" * 45)
+                scan_matching_stocks(target_cagr=rate, initial_amount=pv, years=years, annual_contribution=contrib, hist_years=10, top_n=5)
+
             except ValueError as e:
                 print(f"\nError: {e}")
 
@@ -230,9 +261,9 @@ def main():
                 print(f"Total Gain Needed:            ${res['total_profit']:,}")
                 print(f"Growth Target:                {res['multiplier']}x initial capital")
                 
-                # Automatically run the scan using 5 years of historical data
+                # Automatically run scan using target CAGR and 10 years of historical data
                 print("\n" + "-" * 45)
-                scan_matching_stocks(target_cagr=res['required_cagr_pct'], hist_years=5, top_n=5)
+                scan_matching_stocks(target_cagr=res['required_cagr_pct'], initial_amount=pv, years=years, annual_contribution=contrib, hist_years=10, top_n=5)
 
             except ValueError as e:
                 print(f"\nError: {e}")
