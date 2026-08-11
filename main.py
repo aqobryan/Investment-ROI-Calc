@@ -98,7 +98,6 @@ def get_expanded_stock_universe() -> list:
         if 1 <= len(t_clean) <= 5
     })
 
-# Cache with a 1-hour expiration (ttl=3600 seconds) to prevent memory bloating
 @st.cache_data(ttl=3600)
 def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     hist = yf.Ticker(ticker_symbol).history(period=f"{years}y")
@@ -110,7 +109,6 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     start_price, end_price = float(close_series.iloc[0]), float(close_series.iloc[-1])
     return round((((end_price / start_price) ** (1.0 / years)) - 1.0) * 100.0, 2)
 
-# Cache with 1-hour expiration (ttl=3600 seconds)
 @st.cache_data(ttl=3600)
 def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years: float, annual_contribution: float, hist_years: int, top_n: int):
     stock_universe = get_expanded_stock_universe()
@@ -219,7 +217,8 @@ tab1, tab2, tab3 = st.tabs(["📊 Growth Projection & Chart", "🎯 Target Goal 
 # --- TAB 1: FORWARD GROWTH ---
 with tab1:
     st.subheader("Forward Growth Projection & Compounding Curve")
-    rate = st.slider("Expected Annual Return Rate (%)", min_value=-10.0, max_value=50.0, value=8.0, step=0.5)
+    # Minimum return rate locked to 1.0%
+    rate = st.slider("Expected Annual Return Rate (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5)
     
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
     
@@ -227,7 +226,7 @@ with tab1:
     col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
     col2.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']}%")
     col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
-    col4.metric("Growth Multiple", f"${res['multiplier']}x" if isinstance(res['multiplier'], str) else f"{res['multiplier']}x")
+    col4.metric("Growth Multiple", f"{res['multiplier']}x")
 
     df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
     fig = px.area(
@@ -243,7 +242,6 @@ with tab1:
     st.markdown(f"The following low-volatility stocks from your pool historically matched or exceeded a **{rate}% CAGR** over the past 10 years:")
 
     with st.spinner("Scanning stock pool..."):
-        # Locked to hist_years=10 safely
         stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
         if stock_results:
             df_stocks = pd.DataFrame(stock_results)
@@ -282,7 +280,7 @@ with tab3:
     
     col_a, col_b = st.columns(2)
     with col_a:
-        scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 0.0, 30.0, 10.0, 0.5)
+        scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5)
         if st.button("Scan Stock Universe"):
             with st.spinner("Analyzing market data across stock pool..."):
                 stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
@@ -303,6 +301,6 @@ with tab3:
                     cagr = get_ticker_cagr(specific_ticker, years=hist_years_input)
                     t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
                     st.info(f"**{specific_ticker}** achieved a **{cagr}% CAGR** over the last {hist_years_input} years.")
-                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"${t_res['total_roi_pct']}%")
+                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"{t_res['total_roi_pct']}%")
                 except Exception as e:
                     st.error(f"Could not analyze {specific_ticker}: {e}")
