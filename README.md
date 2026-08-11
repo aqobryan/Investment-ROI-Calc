@@ -16,6 +16,7 @@ A Python tool to calculate investment returns, find required CAGR growth targets
 
 Install this
 pip install -r requirements.txt
+pip install streamlit plotly
 
 Run this
 streamlit run main.py
