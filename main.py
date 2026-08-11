@@ -217,7 +217,7 @@ def display_stock_scan_results(stock_results, show_trajectory=True):
     all_timelines = pd.concat([res["timeline"] for res in stock_results], ignore_index=True)
     tickers = [res["symbol"] for res in stock_results]
     
-    st.markdown("### 📊 Projected Growth Trajectory by Ticker")
+    st.markdown("### 📊 Visualized Growth Trajectory by Ticker")
     
     cols = st.columns(len(tickers) + 1)
     
@@ -303,14 +303,14 @@ with tab1:
 
     st.markdown("---")
     st.subheader("🏆 Top US Stocks Matching This Return Rate")
-    st.markdown(f"The following low-volatility stocks from your pool historically matched or exceeded a **{rate:,.2f}% CAGR** over the past 10 years:")
+    st.markdown(f"The following low-volatility stocks historically matched or exceeded a **{rate:,.2f}% CAGR** over the past 10 years:")
 
     with st.spinner("Scanning stock pool..."):
         stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
         if stock_results:
             display_stock_scan_results(stock_results, show_trajectory=True)
         else:
-            st.warning("No stocks in the pool met or exceeded this specific return rate with sufficient history.")
+            st.warning("No stocks met or exceeded this specific return rate with sufficient history.")
 
 # --- TAB 2: TARGET GOAL ---
 with tab2:
@@ -337,14 +337,14 @@ with tab2:
 
         st.markdown("---")
         st.subheader("🏆 Top US Stocks Matching This Required CAGR")
-        st.markdown(f"The following low-volatility stocks from your pool historically achieved at least a **{res['required_cagr_pct']:,.2f}% CAGR** over the past 10 years:")
+        st.markdown(f"The following low-volatility stocks historically achieved at least a **{res['required_cagr_pct']:,.2f}% CAGR** over the past 10 years:")
 
         with st.spinner("Scanning stock pool for required target..."):
             target_stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
             if target_stock_results:
-                display_stock_scan_results(target_stock_results, show_trajectory=False)
+                display_stock_scan_results(target_stock_results, show_trajectory=True)
             else:
-                st.warning("No stocks in the pool met or exceeded this specific high required CAGR over the past 10 years.")
+                st.warning("No stocks met or exceeded this specific high required CAGR over the past 10 years.")
 
     except Exception as e:
         st.error(f"Error: {e}")
@@ -374,7 +374,7 @@ with tab3:
                 ticker_summary_df.index = range(1, len(ticker_summary_df) + 1)
                 st.dataframe(ticker_summary_df, use_container_width=True)
                 
-                st.markdown("### 📊 Projected Growth Trajectory")
+                st.markdown("### 📊 Visualized Growth Trajectory")
                 df_ticker_timeline = generate_growth_timeline(pv, cagr, years, annual_contrib)
                 fig_ticker = px.line(
                     df_ticker_timeline, x="Year", y="Portfolio Value",
