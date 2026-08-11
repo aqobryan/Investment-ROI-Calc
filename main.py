@@ -152,14 +152,17 @@ def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years
             volatility = float(volatilities[symbol])
             if np.isnan(actual_cagr) or np.isnan(volatility):
                 continue
-            proj = calc.project_growth(initial_amount, actual_cagr, years, annual_contribution)
+            
+            timeline = generate_growth_timeline_data(initial_amount, actual_cagr, years, annual_contribution, symbol)
+            
             results.append({
                 "symbol": symbol,
                 "cagr": f"{round(actual_cagr, 2):,.2f}",
                 "volatility": f"{round(volatility, 2):,.2f}",
-                "invested": proj['total_invested'],
-                "future_value": proj['future_value'],
-                "total_profit": proj['total_profit']
+                "invested": timeline.iloc[-1]['Total Invested'],
+                "future_value": timeline.iloc[-1]['Portfolio Value'],
+                "total_profit": timeline.iloc[-1]['Portfolio Value'] - timeline.iloc[-1]['Total Invested'],
+                "timeline": timeline
             })
     except Exception:
         pass
@@ -192,10 +195,15 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
         })
     return pd.DataFrame(timeline_data)
 
+def generate_growth_timeline_data(initial_amount, annual_return_pct, years, annual_contribution, symbol):
+    df = generate_growth_timeline(initial_amount, annual_return_pct, years, annual_contribution)
+    df["symbol"] = symbol
+    return df
+
 def display_stock_scan_results(stock_results):
     df_stocks = pd.DataFrame(stock_results)
     
-    df_table = df_stocks.copy()
+    df_table = df_stocks.drop(columns=["timeline"]).copy()
     df_table["invested"] = df_table["invested"].apply(lambda x: f"${x:,.2f}")
     df_table["future_value"] = df_table["future_value"].apply(lambda x: f"${x:,.2f}")
     df_table["total_profit"] = df_table["total_profit"].apply(lambda x: f"${x:,.2f}")
@@ -204,14 +212,37 @@ def display_stock_scan_results(stock_results):
     
     st.dataframe(df_table, use_container_width=True)
     
-    # Replaced bar chart with a color-coded line graph showing only Projected Value per ticker
+    all_timelines = pd.concat([res["timeline"] for res in stock_results], ignore_index=True)
+    tickers = [res["symbol"] for res in stock_results]
+    
+    st.markdown("### 📊 Projected Growth Trajectory by Ticker")
+    
+    cols = st.columns(len(tickers) + 1)
+    
+    if "selected_ticker_view" not in st.session_state:
+        st.session_state.selected_ticker_view = "All Stocks"
+        
+    with cols[0]:
+        if st.button("All Stocks", use_container_width=True):
+            st.session_state.selected_ticker_view = "All Stocks"
+            
+    for i, tkr in enumerate(tickers):
+        with cols[i + 1]:
+            if st.button(tkr, use_container_width=True):
+                st.session_state.selected_ticker_view = tkr
+
+    if st.session_state.selected_ticker_view == "All Stocks":
+        plot_df = all_timelines
+    else:
+        plot_df = all_timelines[all_timelines["symbol"] == st.session_state.selected_ticker_view]
+
     fig_line = px.line(
-        df_stocks, x="symbol", y="future_value", color="symbol", markers=True,
-        labels={"symbol": "Ticker", "future_value": "Projected Value ($)"},
-        title="Projected Future Value by Ticker"
+        plot_df, x="Year", y="Portfolio Value", color="symbol", markers=True,
+        labels={"Year": "Year", "Portfolio Value": "Portfolio Value ($)", "symbol": "Ticker"},
+        title=f"Growth Trajectory Over Time ({st.session_state.selected_ticker_view})"
     )
     fig_line.update_layout(hovermode="x unified", template="plotly_dark")
-    fig_line.update_traces(hovertemplate="<b>%{x}</b>: $%{y:,.2f}<extra></extra>")
+    fig_line.update_traces(hovertemplate="<b>%{data.name}</b>: $%{y:,.2f}<extra></extra>")
     st.plotly_chart(fig_line, use_container_width=True)
 
 # --- MAIN APP LAYOUT ---
@@ -234,11 +265,12 @@ years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=1
 
 calc = ROICalculator()
 
+# Swapped tab names/positions to place Ticker Analysis under Live Stock Scanner and Min CAGR under Find your CAGR
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Growth Projection & Chart", 
     "🎯 Target Goal Calculator", 
-    "🏷️ Live Stock Scanner", 
-    "🔍 Find your CAGR"
+    "🏷️ Ticker Analysis", 
+    "🔍 Live Stock Scanner & CAGR"
 ])
 
 # --- TAB 1: FORWARD GROWTH ---
@@ -312,26 +344,13 @@ with tab2:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- TAB 3: LIVE STOCK SCANNER ---
+# --- TAB 3: TICKER ANALYSIS (Formerly under find your CAGR) ---
 with tab3:
-    st.subheader("Live US Stock Scanner")
-    scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f", key="tab3_slider")
-    if st.button("Scan Stock Universe", key="tab3_btn"):
-        with st.spinner("Analyzing market data across stock pool..."):
-            stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
-            if stock_results:
-                st.success("Top matching low-volatility performers found:")
-                display_stock_scan_results(stock_results)
-            else:
-                st.warning("No stocks matched the criteria.")
-
-# --- TAB 4: FIND YOUR CAGR (TICKER ANALYSIS) ---
-with tab4:
     st.subheader("Ticker Analysis & CAGR Lookup")
     specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
-    hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10, format="%.2f", key="tab4_slider")
+    hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10, format="%.2f", key="tab3_slider")
     
-    if st.button("Run Ticker Analysis", key="tab4_btn"):
+    if st.button("Run Ticker Analysis", key="tab3_btn"):
         with st.spinner(f"Fetching {specific_ticker} data..."):
             try:
                 cagr = get_ticker_cagr(specific_ticker, years=int(hist_years_input))
@@ -352,3 +371,16 @@ with tab4:
                 
             except Exception as e:
                 st.error(f"Could not analyze {specific_ticker}: {e}")
+
+# --- TAB 4: LIVE STOCK SCANNER & MIN CAGR THRESHOLD (Formerly under live stock scanner) ---
+with tab4:
+    st.subheader("Live US Stock Scanner & Minimum Historical CAGR Threshold")
+    scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f", key="tab4_slider")
+    if st.button("Scan Stock Universe", key="tab4_btn"):
+        with st.spinner("Analyzing market data across stock pool..."):
+            stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=5)
+            if stock_results:
+                st.success("Top matching low-volatility performers found:")
+                display_stock_scan_results(stock_results)
+            else:
+                st.warning("No stocks matched the criteria.")
