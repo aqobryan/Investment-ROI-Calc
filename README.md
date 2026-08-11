@@ -14,11 +14,17 @@ A Python tool to calculate investment returns, find required CAGR growth targets
    git clone [https://github.com/YOUR-USERNAME/YOUR-REPO-NAME.git](https://github.com/YOUR-USERNAME/YOUR-REPO-NAME.git)
    cd YOUR-REPO-NAME
 
+
 Install this:
+
 pip install -r requirements.txt
+
 pip install streamlit plotly
 
 Run this:
+
 streamlit run main.py
+
+
 
 NONE OF THIS IS FINANCIAL ADVICE I AM NOT A FINANCIAL ADVISOR.
