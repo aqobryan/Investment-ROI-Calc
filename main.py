@@ -98,7 +98,6 @@ def get_expanded_stock_universe() -> list:
         if 1 <= len(t_clean) <= 5
     })
 
-# Added show_spinner=False to suppress Streamlit's default loading message
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     hist = yf.Ticker(ticker_symbol).history(period=f"{years}y")
@@ -110,7 +109,6 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     start_price, end_price = float(close_series.iloc[0]), float(close_series.iloc[-1])
     return round((((end_price / start_price) ** (1.0 / years)) - 1.0) * 100.0, 2)
 
-# Added show_spinner=False to suppress Streamlit's default loading message
 @st.cache_data(ttl=3600, show_spinner=False)
 def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years: float, annual_contribution: float, hist_years: int, top_n: int):
     stock_universe = get_expanded_stock_universe()
@@ -198,7 +196,7 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
 st.title("📈 US Market Investment ROI Dashboard")
 st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
 
-# Global Sidebar Parameters
+# Global Sidebar Parameters (Restored!)
 st.sidebar.header("⚙️ Financial Inputs")
 pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%.2f")
 
@@ -295,8 +293,12 @@ with tab2:
 with tab3:
     st.subheader("Live US Stock Scanner & Ticker Analysis")
     
+    # We keep columns so it stays confined to the "far left" visually
     col_a, col_b = st.columns(2)
+    
+    # Everything is now in the Left Column
     with col_a:
+        st.markdown("##### 1. Scan Stock Universe")
         scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f")
         if st.button("Scan Stock Universe"):
             with st.spinner("Analyzing market data across stock pool..."):
@@ -309,16 +311,31 @@ with tab3:
                     st.dataframe(df_stocks, use_container_width=True)
                 else:
                     st.warning("No stocks matched the criteria.")
-                    
-    with col_b:
+        
+        st.markdown("<br><hr><br>", unsafe_allow_html=True)
+        
+        st.markdown("##### 2. Ticker Analysis")
         specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
         hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10, format="%.2f")
+        
         if st.button("Run Ticker Analysis"):
             with st.spinner(f"Fetching {specific_ticker} data..."):
                 try:
                     cagr = get_ticker_cagr(specific_ticker, years=int(hist_years_input))
                     t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
+                    
+                    # Blue box above table
                     st.info(f"**{specific_ticker}** achieved a **{cagr:,.2f}% CAGR** over the last {int(hist_years_input)} years.")
-                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"{t_res['total_roi_pct']:,.2f}%")
+                    
+                    # Table under blue box displaying Amount Invested, Amount Profit, and CAGR
+                    ticker_summary_df = pd.DataFrame([{
+                        "Ticker": specific_ticker,
+                        "Amount Invested ($)": f"${t_res['total_invested']:,.2f}",
+                        "Amount Profit ($)": f"${t_res['total_profit']:,.2f}",
+                        "CAGR (%)": f"{cagr:,.2f}%"
+                    }])
+                    ticker_summary_df.index = range(1, len(ticker_summary_df) + 1)
+                    st.dataframe(ticker_summary_df, use_container_width=True)
+                    
                 except Exception as e:
                     st.error(f"Could not analyze {specific_ticker}: {e}")
