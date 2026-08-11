@@ -199,7 +199,7 @@ def generate_growth_timeline_data(initial_amount, annual_return_pct, years, annu
     df["symbol"] = symbol
     return df
 
-def display_stock_scan_results(stock_results, show_trajectory=True):
+def display_stock_scan_results(stock_results, show_trajectory=True, key_prefix=""):
     df_stocks = pd.DataFrame(stock_results)
     
     df_table = df_stocks.drop(columns=["timeline"]).copy()
@@ -221,31 +221,32 @@ def display_stock_scan_results(stock_results, show_trajectory=True):
     
     cols = st.columns(len(tickers) + 1)
     
-    if "selected_ticker_view" not in st.session_state:
-        st.session_state.selected_ticker_view = "All Stocks"
+    state_key = f"selected_ticker_view_{key_prefix}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = "All Stocks"
         
     with cols[0]:
-        if st.button("All Stocks", use_container_width=True):
-            st.session_state.selected_ticker_view = "All Stocks"
+        if st.button("All Stocks", key=f"{key_prefix}_all", use_container_width=True):
+            st.session_state[state_key] = "All Stocks"
             
     for i, tkr in enumerate(tickers):
         with cols[i + 1]:
-            if st.button(tkr, use_container_width=True):
-                st.session_state.selected_ticker_view = tkr
+            if st.button(tkr, key=f"{key_prefix}_{tkr}", use_container_width=True):
+                st.session_state[state_key] = tkr
 
     default_colors = px.colors.qualitative.Plotly
     color_map = {ticker: default_colors[i % len(default_colors)] for i, ticker in enumerate(tickers)}
 
-    if st.session_state.selected_ticker_view == "All Stocks":
+    if st.session_state[state_key] == "All Stocks":
         plot_df = all_timelines
     else:
-        plot_df = all_timelines[all_timelines["symbol"] == st.session_state.selected_ticker_view]
+        plot_df = all_timelines[all_timelines["symbol"] == st.session_state[state_key]]
 
     fig_line = px.line(
         plot_df, x="Year", y="Portfolio Value", color="symbol", markers=True,
         color_discrete_map=color_map,
         labels={"Year": "Year", "Portfolio Value": "Portfolio Value ($)", "symbol": "Ticker"},
-        title=f"Growth Trajectory Over Time ({st.session_state.selected_ticker_view})"
+        title=f"Growth Trajectory Over Time ({st.session_state[state_key]})"
     )
     fig_line.update_layout(hovermode="x unified", template="plotly_dark")
     fig_line.update_traces(hovertemplate="<b>%{data.name}</b>: $%{y:,.2f}<extra></extra>")
@@ -308,7 +309,7 @@ with tab1:
     with st.spinner("Scanning stock pool..."):
         stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
         if stock_results:
-            display_stock_scan_results(stock_results, show_trajectory=True)
+            display_stock_scan_results(stock_results, show_trajectory=True, key_prefix="tab1")
         else:
             st.warning("No stocks met or exceeded this specific return rate with sufficient history.")
 
@@ -342,7 +343,7 @@ with tab2:
         with st.spinner("Scanning stock pool for required target..."):
             target_stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
             if target_stock_results:
-                display_stock_scan_results(target_stock_results, show_trajectory=True)
+                display_stock_scan_results(target_stock_results, show_trajectory=True, key_prefix="tab2")
             else:
                 st.warning("No stocks met or exceeded this specific high required CAGR over the past 10 years.")
 
@@ -396,6 +397,6 @@ with tab4:
             stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=5)
             if stock_results:
                 st.success("Top matching low-volatility performers found:")
-                display_stock_scan_results(stock_results, show_trajectory=False)
+                display_stock_scan_results(stock_results, show_trajectory=False, key_prefix="tab4")
             else:
                 st.warning("No stocks matched the criteria.")
