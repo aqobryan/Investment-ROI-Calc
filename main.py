@@ -217,7 +217,6 @@ tab1, tab2, tab3 = st.tabs(["📊 Growth Projection & Chart", "🎯 Target Goal 
 # --- TAB 1: FORWARD GROWTH ---
 with tab1:
     st.subheader("Forward Growth Projection & Compounding Curve")
-    # Minimum return rate locked to 1.0%
     rate = st.slider("Expected Annual Return Rate (%)", min_value=1.0, max_value=50.0, value=8.0, step=0.5)
     
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
@@ -271,6 +270,20 @@ with tab2:
         )
         fig.update_layout(hovermode="x unified", template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("🏆 Top US Stocks Matching This Required CAGR")
+        st.markdown(f"The following low-volatility stocks from your pool historically achieved at least a **{res['required_cagr_pct']}% CAGR** over the past 10 years:")
+
+        with st.spinner("Scanning stock pool for required target..."):
+            target_stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
+            if target_stock_results:
+                df_target_stocks = pd.DataFrame(target_stock_results)
+                df_target_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+                st.dataframe(df_target_stocks.style.background_gradient(subset=["10yr CAGR (%)"], cmap="Greens"), use_container_width=True)
+            else:
+                st.warning("No stocks in the pool met or exceeded this specific high required CAGR over the past 10 years.")
+
     except Exception as e:
         st.error(f"Error: {e}")
 
