@@ -249,23 +249,22 @@ def display_stock_scan_results(stock_results):
 st.title("📈 US Market Investment ROI Dashboard")
 st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
 
-# Global Sidebar Parameters 
+# Global Sidebar Parameters (format="%g" omits decimals if whole numbers)
 st.sidebar.header("⚙️ Financial Inputs")
-pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%.2f")
+pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%g")
 
 freq_label = st.sidebar.selectbox("Contribution Frequency", ["None", "Annual", "Monthly", "Bi-weekly", "Weekly"])
 freq_multipliers = {"None": 0.0, "Annual": 1.0, "Monthly": 12.0, "Bi-weekly": 26.0, "Weekly": 52.0}
 
 contrib_amount = 0.0
 if freq_label != "None":
-    contrib_amount = st.sidebar.number_input("Contribution Amount ($)", min_value=0.0, value=500.0, step=100.0, format="%.2f")
+    contrib_amount = st.sidebar.number_input("Contribution Amount ($)", min_value=0.0, value=500.0, step=100.0, format="%g")
 
 annual_contrib = contrib_amount * freq_multipliers[freq_label]
-years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=0.5, format="%.2f")
+years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=0.5, format="%g")
 
 calc = ROICalculator()
 
-# Swapped tab names/positions to place Ticker Analysis under Live Stock Scanner and Min CAGR under Find your CAGR
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Growth Projection & Chart", 
     "🎯 Target Goal Calculator", 
@@ -310,7 +309,8 @@ with tab1:
 # --- TAB 2: TARGET GOAL ---
 with tab2:
     st.subheader("Target Goal & Required CAGR Finder")
-    target = st.number_input("Desired End Target Value ($)", min_value=100.0, value=100000.0, step=5000.0, format="%.2f")
+    # format="%g" applied here as well to omit decimals unless provided
+    target = st.number_input("Desired End Target Value ($)", min_value=100.0, value=100000.0, step=5000.0, format="%g")
     
     try:
         res = calc.calculate_required_cagr(pv, target, years, annual_contribution=annual_contrib)
@@ -344,7 +344,7 @@ with tab2:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- TAB 3: TICKER ANALYSIS (Formerly under find your CAGR) ---
+# --- TAB 3: TICKER ANALYSIS ---
 with tab3:
     st.subheader("Ticker Analysis & CAGR Lookup")
     specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
@@ -372,7 +372,7 @@ with tab3:
             except Exception as e:
                 st.error(f"Could not analyze {specific_ticker}: {e}")
 
-# --- TAB 4: LIVE STOCK SCANNER & MIN CAGR THRESHOLD (Formerly under live stock scanner) ---
+# --- TAB 4: LIVE STOCK SCANNER & MIN CAGR THRESHOLD ---
 with tab4:
     st.subheader("Live US Stock Scanner & Minimum Historical CAGR Threshold")
     scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f", key="tab4_slider")
