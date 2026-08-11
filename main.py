@@ -12,33 +12,23 @@ st.set_page_config(
     layout="wide"
 )
 
+# Balanced 100-Ticker Pool (Stable Growth + Aggressive Growth)
 STOCK_POOL = [
-    "SPY", "QQQ", "VOO", "IWM", "DIA", "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL",
-    "GOOG", "META", "BRK-B", "LLY", "AVGO", "JPM", "WMT", "V", "XOM", "JNJ",
-    "MA", "UNH", "COST", "HD", "PG", "NFLX", "BAC", "ADBE", "CRM", "AMD",
-    "CVX", "MRK", "ABT", "PEP", "KO", "TMO", "MCD", "DIS", "CSCO", "ACN",
-    "ABNB", "PLTR", "UBER", "INTC", "IBM", "ORCL", "LIN", "PM", "GE", "CAT",
-    "AXP", "AMAT", "BKNG", "ISRG", "TXN", "QCOM", "SPGI", "LOW", "UPS", "RTX",
-    "HON", "COP", "UNP", "DE", "SBUX", "ELV", "BA", "LMT", "MDT", "BLK",
-    "CB", "GILD", "ADI", "MDLZ", "CVS", "TJX", "AMT", "SYK", "CI", "PGR",
-    "REGN", "VRTX", "ZTS", "BSX", "PLD", "NKE", "DUK", "SO", "ITW", "BDX",
-    "EOG", "C", "SLB", "ICE", "NEM", "WM", "SHW", "CL", "MO", "EQIX",
-    "APD", "HUM", "NSC", "ETN", "CSX", "MCK", "PNC", "USB", "TGT", "ORLY",
-    "GD", "ADSK", "MAR", "APH", "MNST", "PH", "MS", "T", "VZ", "PYPL",
-    "CMCSA", "COR", "ROP", "TT", "O", "CTAS", "AON", "ECL", "SRE", "PCG",
-    "KMB", "MSI", "GIS", "XEL", "ED", "DXCM", "ANET", "AEP", "TRV", "AZN",
-    "SNPS", "CDNS", "PANW", "KLAC", "LRCX", "MCHP", "NXPI", "FTNT", "CTSH", "PAYX",
-    "ODFL", "FAST", "ROST", "IDXX", "EA", "TTWO", "FANG", "DVN", "OXY", "HAL",
-    "BKR", "WMB", "KMI", "PSX", "VLO", "MPC", "TRGP", "VICI", "PSA", "SPG",
-    "WELL", "SBAC", "DLR", "EXR", "AVB", "EQR", "MAA", "UDR", "CPT", "ESS",
-    "ARE", "WY", "KIM", "REG", "HST", "KDP", "STZ", "DG", "DLTR", "TSN",
-    "HRL", "MKC", "CAG", "CHD", "CLX", "SYY", "KR", "TAP", "STT", "NTRS",
-    "BEN", "TROW", "AMP", "HIG", "PRU", "MET", "AFL", "ALL", "PCAR", "ROKU",
-    "SNOW", "DDOG", "ZS", "NET", "CRWD", "TEAM", "MDB", "ON", "SWKS", "QRVO",
-    "ENPH", "SEDG", "FSLR", "ZBRA", "TYL", "PTC", "AKAM", "JKHY", "NDAQ", "CME",
-    "MKTX", "CBOE", "COIN", "HOOD", "SOFI", "AFRM", "AXON", "TWLO", "DOCU", "OKTA",
-    "RBLX", "TSLA", "ARM", "MU", "SHOP", "SPOT", "MELI", "PATH", "RKLB",
-    "TEM", "CELH", "ANF", "DUOL", "APP", "RDDT", "PINS", "SNAP", "BABA", "PDD"
+    # Core ETFs
+    "SPY", "QQQ", "VOO", "IWM", "DIA", 
+    # Aggressive Growth & Tech Leaders
+    "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "NFLX", "AMD", "AVGO",
+    "PLTR", "CRM", "ADBE", "NOW", "INTU", "UBER", "ABNB", "SNOW", "DDOG", "CRWD",
+    "QCOM", "TXN", "AMAT", "LRCX", "MU", "PANW", "NET", "ZS", "MELI", "SHOP",
+    # Stable Growth & Blue Chips
+    "BRK-B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "BLK",
+    "LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "PFE", "AMGN", "ISRG",
+    "WMT", "COST", "HD", "PG", "KO", "PEP", "MCD", "DIS", "NKE", "SBUX",
+    "CAT", "UNP", "GE", "RTX", "LMT", "HON", "BA", "DE", "UPS", "ADP",
+    "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "PSX", "VLO", "NEE", "SO",
+    "PLD", "AMT", "EQIX", "CCI", "SPG", "LIN", "SHW", "APD", "NEM", "FCX",
+    "T", "VZ", "CMCSA", "TMUS", "IBM", "ORCL", "ADI", "KLAC", "SYK", "ZTS",
+    "MDLZ", "CVS", "TJX", "LOW", "SPGI", "ICE", "CB", "PGR", "REGN", "VRTX"
 ]
 
 class ROICalculator:
@@ -108,7 +98,8 @@ def get_expanded_stock_universe() -> list:
         if 1 <= len(t_clean) <= 5
     })
 
-@st.cache_data
+# Cache with a 1-hour expiration (ttl=3600 seconds) to prevent memory bloating
+@st.cache_data(ttl=3600)
 def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     hist = yf.Ticker(ticker_symbol).history(period=f"{years}y")
     if hist.empty or 'Close' not in hist.columns:
@@ -119,7 +110,8 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     start_price, end_price = float(close_series.iloc[0]), float(close_series.iloc[-1])
     return round((((end_price / start_price) ** (1.0 / years)) - 1.0) * 100.0, 2)
 
-@st.cache_data
+# Cache with 1-hour expiration (ttl=3600 seconds)
+@st.cache_data(ttl=3600)
 def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years: float, annual_contribution: float, hist_years: int, top_n: int):
     stock_universe = get_expanded_stock_universe()
     results = []
@@ -191,7 +183,6 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
             continue
         
         fraction = min(1.0, years - (yr - 1))
-        # Apply contribution and growth for the fraction of the year
         current_val = (current_val + (annual_contribution * fraction)) * ((1 + rate) ** fraction)
         total_inv += (annual_contribution * fraction)
         
@@ -207,7 +198,7 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
 st.title("📈 US Market Investment ROI Dashboard")
 st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
 
-# Global Sidebar Parameters (Shared across tabs)
+# Global Sidebar Parameters
 st.sidebar.header("⚙️ Financial Inputs")
 pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0)
 
@@ -223,7 +214,6 @@ years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=1
 
 calc = ROICalculator()
 
-# Use clean tabs instead of dropdown menus
 tab1, tab2, tab3 = st.tabs(["📊 Growth Projection & Chart", "🎯 Target Goal Calculator", "🏷️ Live Stock Scanner"])
 
 # --- TAB 1: FORWARD GROWTH ---
@@ -237,9 +227,8 @@ with tab1:
     col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
     col2.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']}%")
     col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
-    col4.metric("Growth Multiple", f"{res['multiplier']}x")
+    col4.metric("Growth Multiple", f"${res['multiplier']}x" if isinstance(res['multiplier'], str) else f"{res['multiplier']}x")
 
-    # Interactive Plotly Chart
     df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
     fig = px.area(
         df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
@@ -248,6 +237,20 @@ with tab1:
     )
     fig.update_layout(hovermode="x unified", template="plotly_dark")
     st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("🏆 Top US Stocks Matching This Return Rate")
+    st.markdown(f"The following low-volatility stocks from your pool historically matched or exceeded a **{rate}% CAGR** over the past 10 years:")
+
+    with st.spinner("Scanning stock pool..."):
+        # Locked to hist_years=10 safely
+        stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
+        if stock_results:
+            df_stocks = pd.DataFrame(stock_results)
+            df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+            st.dataframe(df_stocks.style.background_gradient(subset=["10yr CAGR (%)"], cmap="Greens"), use_container_width=True)
+        else:
+            st.warning("No stocks in the pool met or exceeded this specific return rate with sufficient history.")
 
 # --- TAB 2: TARGET GOAL ---
 with tab2:
@@ -263,7 +266,6 @@ with tab2:
         col3.metric("Total Gain Needed", f"${res['total_profit']:,.2f}")
         col4.metric("Growth Target", f"{res['multiplier']}x")
 
-        # Timeline representation of the target path
         df_timeline = generate_growth_timeline(pv, res['required_cagr_pct'], years, annual_contrib)
         fig = px.line(
             df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
@@ -294,13 +296,13 @@ with tab3:
                     
     with col_b:
         specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
-        hist_years = st.slider("Historical Lookback (Years)", 1, 20, 10)
+        hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10)
         if st.button("Run Ticker Analysis"):
             with st.spinner(f"Fetching {specific_ticker} data..."):
                 try:
-                    cagr = get_ticker_cagr(specific_ticker, years=hist_years)
+                    cagr = get_ticker_cagr(specific_ticker, years=hist_years_input)
                     t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
-                    st.info(f"**{specific_ticker}** achieved a **{cagr}% CAGR** over the last {hist_years} years.")
-                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"{t_res['total_roi_pct']}%")
+                    st.info(f"**{specific_ticker}** achieved a **{cagr}% CAGR** over the last {hist_years_input} years.")
+                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"${t_res['total_roi_pct']}%")
                 except Exception as e:
                     st.error(f"Could not analyze {specific_ticker}: {e}")
