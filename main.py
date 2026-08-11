@@ -113,7 +113,6 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
 def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years: float, annual_contribution: float, hist_years: int, top_n: int):
     stock_universe = get_expanded_stock_universe()
     results = []
-    calc = ROICalculator()
 
     try:
         raw_data = yf.download(
@@ -200,7 +199,7 @@ def generate_growth_timeline_data(initial_amount, annual_return_pct, years, annu
     df["symbol"] = symbol
     return df
 
-def display_stock_scan_results(stock_results):
+def display_stock_scan_results(stock_results, show_trajectory=True):
     df_stocks = pd.DataFrame(stock_results)
     
     df_table = df_stocks.drop(columns=["timeline"]).copy()
@@ -211,6 +210,9 @@ def display_stock_scan_results(stock_results):
     df_table.index = range(1, len(df_table) + 1)
     
     st.dataframe(df_table, use_container_width=True)
+    
+    if not show_trajectory:
+        return
     
     all_timelines = pd.concat([res["timeline"] for res in stock_results], ignore_index=True)
     tickers = [res["symbol"] for res in stock_results]
@@ -231,6 +233,9 @@ def display_stock_scan_results(stock_results):
             if st.button(tkr, use_container_width=True):
                 st.session_state.selected_ticker_view = tkr
 
+    default_colors = px.colors.qualitative.Plotly
+    color_map = {ticker: default_colors[i % len(default_colors)] for i, ticker in enumerate(tickers)}
+
     if st.session_state.selected_ticker_view == "All Stocks":
         plot_df = all_timelines
     else:
@@ -238,6 +243,7 @@ def display_stock_scan_results(stock_results):
 
     fig_line = px.line(
         plot_df, x="Year", y="Portfolio Value", color="symbol", markers=True,
+        color_discrete_map=color_map,
         labels={"Year": "Year", "Portfolio Value": "Portfolio Value ($)", "symbol": "Ticker"},
         title=f"Growth Trajectory Over Time ({st.session_state.selected_ticker_view})"
     )
@@ -247,9 +253,9 @@ def display_stock_scan_results(stock_results):
 
 # --- MAIN APP LAYOUT ---
 st.title("📈 US Market Investment ROI Dashboard")
-st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
+st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning. **(Not Financial Advice)**")
 
-# Global Sidebar Parameters (format="%g" omits decimals if whole numbers)
+# Global Sidebar Parameters 
 st.sidebar.header("⚙️ Financial Inputs")
 pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%g")
 
@@ -269,7 +275,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Growth Projection & Chart", 
     "🎯 Target Goal Calculator", 
     "🏷️ Ticker Analysis", 
-    "🔍 Live Stock Scanner & CAGR"
+    "🔍 Find your CAGR"
 ])
 
 # --- TAB 1: FORWARD GROWTH ---
@@ -302,14 +308,13 @@ with tab1:
     with st.spinner("Scanning stock pool..."):
         stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
         if stock_results:
-            display_stock_scan_results(stock_results)
+            display_stock_scan_results(stock_results, show_trajectory=True)
         else:
             st.warning("No stocks in the pool met or exceeded this specific return rate with sufficient history.")
 
 # --- TAB 2: TARGET GOAL ---
 with tab2:
     st.subheader("Target Goal & Required CAGR Finder")
-    # format="%g" applied here as well to omit decimals unless provided
     target = st.number_input("Desired End Target Value ($)", min_value=100.0, value=100000.0, step=5000.0, format="%g")
     
     try:
@@ -337,7 +342,7 @@ with tab2:
         with st.spinner("Scanning stock pool for required target..."):
             target_stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
             if target_stock_results:
-                display_stock_scan_results(target_stock_results)
+                display_stock_scan_results(target_stock_results, show_trajectory=False)
             else:
                 st.warning("No stocks in the pool met or exceeded this specific high required CAGR over the past 10 years.")
 
@@ -369,10 +374,20 @@ with tab3:
                 ticker_summary_df.index = range(1, len(ticker_summary_df) + 1)
                 st.dataframe(ticker_summary_df, use_container_width=True)
                 
+                st.markdown("### 📊 Projected Growth Trajectory")
+                df_ticker_timeline = generate_growth_timeline(pv, cagr, years, annual_contrib)
+                fig_ticker = px.line(
+                    df_ticker_timeline, x="Year", y="Portfolio Value",
+                    markers=True, title=f"Growth Trajectory Over Time ({specific_ticker})"
+                )
+                fig_ticker.update_layout(hovermode="x unified", template="plotly_dark")
+                fig_ticker.update_traces(hovertemplate="<b>Value:</b> $%{y:,.2f}<extra></extra>")
+                st.plotly_chart(fig_ticker, use_container_width=True)
+                
             except Exception as e:
                 st.error(f"Could not analyze {specific_ticker}: {e}")
 
-# --- TAB 4: LIVE STOCK SCANNER & MIN CAGR THRESHOLD ---
+# --- TAB 4: FIND YOUR CAGR ---
 with tab4:
     st.subheader("Live US Stock Scanner & Minimum Historical CAGR Threshold")
     scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f", key="tab4_slider")
@@ -381,6 +396,6 @@ with tab4:
             stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=5)
             if stock_results:
                 st.success("Top matching low-volatility performers found:")
-                display_stock_scan_results(stock_results)
+                display_stock_scan_results(stock_results, show_trajectory=False)
             else:
                 st.warning("No stocks matched the criteria.")
