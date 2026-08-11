@@ -11,7 +11,7 @@ A Python tool to calculate investment returns, find required CAGR growth targets
 
 1.) Visit this URL: https://investment-roi.streamlit.app/
 
-
+OR
 
 1. Clone the repository:
    ```bash
