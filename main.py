@@ -204,21 +204,15 @@ def display_stock_scan_results(stock_results):
     
     st.dataframe(df_table, use_container_width=True)
     
-    df_plot = df_stocks.melt(
-        id_vars=["symbol"], 
-        value_vars=["invested", "future_value"], 
-        var_name="Metric", 
-        value_name="Amount ($)"
+    # Replaced bar chart with a color-coded line graph showing only Projected Value per ticker
+    fig_line = px.line(
+        df_stocks, x="symbol", y="future_value", color="symbol", markers=True,
+        labels={"symbol": "Ticker", "future_value": "Projected Value ($)"},
+        title="Projected Future Value by Ticker"
     )
-    df_plot["Metric"] = df_plot["Metric"].map({"invested": "Total Invested", "future_value": "Projected Value"})
-    
-    fig_bar = px.bar(
-        df_plot, x="symbol", y="Amount ($)", color="Metric", barmode="group",
-        title="Total Invested vs. Projected Value by Ticker"
-    )
-    fig_bar.update_layout(hovermode="x unified", template="plotly_dark")
-    fig_bar.update_traces(hovertemplate="<b>%{data.name}</b>: $%{y:,.2f}<extra></extra>")
-    st.plotly_chart(fig_bar, use_container_width=True)
+    fig_line.update_layout(hovermode="x unified", template="plotly_dark")
+    fig_line.update_traces(hovertemplate="<b>%{x}</b>: $%{y:,.2f}<extra></extra>")
+    st.plotly_chart(fig_line, use_container_width=True)
 
 # --- MAIN APP LAYOUT ---
 st.title("📈 US Market Investment ROI Dashboard")
@@ -240,7 +234,6 @@ years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=1
 
 calc = ROICalculator()
 
-# Updated tabs including "Find your CAGR"
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Growth Projection & Chart", 
     "🎯 Target Goal Calculator", 
@@ -256,10 +249,10 @@ with tab1:
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']:,.2f}%")
-    col2.metric("Net Profit", f"${res['total_profit']:,.2f}")
-    col3.metric("Growth Multiple", f"{res['multiplier']:,.2f}x")
-    col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
+    col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
+    col2.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']:,.2f}%")
+    col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
+    col4.metric("Growth Multiple", f"{res['multiplier']:,.2f}x")
 
     df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
     fig = px.area(
@@ -291,10 +284,10 @@ with tab2:
         res = calc.calculate_required_cagr(pv, target, years, annual_contribution=annual_contrib)
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Required CAGR", f"{res['required_cagr_pct']:,.2f}%")
-        col2.metric("Net Profit", f"${res['total_profit']:,.2f}")
-        col3.metric("Growth Target", f"{res['multiplier']:,.2f}x")
-        col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
+        col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
+        col2.metric("Required CAGR", f"{res['required_cagr_pct']:,.2f}%")
+        col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
+        col4.metric("Growth Target", f"{res['multiplier']:,.2f}x")
 
         df_timeline = generate_growth_timeline(pv, res['required_cagr_pct'], years, annual_contrib)
         fig = px.line(
@@ -344,10 +337,8 @@ with tab4:
                 cagr = get_ticker_cagr(specific_ticker, years=int(hist_years_input))
                 t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
                 
-                # Blue box above table
                 st.info(f"**{specific_ticker}** achieved a **{cagr:,.2f}% CAGR** over the last {int(hist_years_input)} years.")
                 
-                # Table updated with Growth Multiple, Future Value, Net Profit, and CAGR
                 ticker_summary_df = pd.DataFrame([{
                     "Ticker": specific_ticker,
                     "Amount Invested ($)": f"${t_res['total_invested']:,.2f}",
