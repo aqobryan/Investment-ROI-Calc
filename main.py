@@ -153,7 +153,6 @@ def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years
             if np.isnan(actual_cagr) or np.isnan(volatility):
                 continue
             proj = calc.project_growth(initial_amount, actual_cagr, years, annual_contribution)
-            # Keeping financial results as floats to easily plot them later
             results.append({
                 "symbol": symbol,
                 "cagr": f"{round(actual_cagr, 2):,.2f}",
@@ -193,12 +192,9 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
         })
     return pd.DataFrame(timeline_data)
 
-
-# --- HELPER FUNCTION TO DISPLAY TABLES & CHARTS CONSISTENTLY ---
 def display_stock_scan_results(stock_results):
     df_stocks = pd.DataFrame(stock_results)
     
-    # Format a copy of the dataframe purely for the visual table
     df_table = df_stocks.copy()
     df_table["invested"] = df_table["invested"].apply(lambda x: f"${x:,.2f}")
     df_table["future_value"] = df_table["future_value"].apply(lambda x: f"${x:,.2f}")
@@ -206,10 +202,8 @@ def display_stock_scan_results(stock_results):
     df_table.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Total Invested ($)", "Projected Value ($)", "Net Profit ($)"]
     df_table.index = range(1, len(df_table) + 1)
     
-    # Display the Table
     st.dataframe(df_table, use_container_width=True)
     
-    # Render the Bar Chart mapping Total Invested vs Projected Value
     df_plot = df_stocks.melt(
         id_vars=["symbol"], 
         value_vars=["invested", "future_value"], 
@@ -223,11 +217,8 @@ def display_stock_scan_results(stock_results):
         title="Total Invested vs. Projected Value by Ticker"
     )
     fig_bar.update_layout(hovermode="x unified", template="plotly_dark")
-    
-    # The <extra></extra> removes the secondary trace box on hover to keep it clean
     fig_bar.update_traces(hovertemplate="<b>%{data.name}</b>: $%{y:,.2f}<extra></extra>")
     st.plotly_chart(fig_bar, use_container_width=True)
-
 
 # --- MAIN APP LAYOUT ---
 st.title("📈 US Market Investment ROI Dashboard")
@@ -249,7 +240,13 @@ years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=1
 
 calc = ROICalculator()
 
-tab1, tab2, tab3 = st.tabs(["📊 Growth Projection & Chart", "🎯 Target Goal Calculator", "🏷️ Live Stock Scanner"])
+# Updated tabs including "Find your CAGR"
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Growth Projection & Chart", 
+    "🎯 Target Goal Calculator", 
+    "🏷️ Live Stock Scanner", 
+    "🔍 Find your CAGR"
+])
 
 # --- TAB 1: FORWARD GROWTH ---
 with tab1:
@@ -259,15 +256,12 @@ with tab1:
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
     
     col1, col2, col3, col4 = st.columns(4)
-    # Reordered metrics: Total Invested is now next to Growth Multiple
     col1.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']:,.2f}%")
     col2.metric("Net Profit", f"${res['total_profit']:,.2f}")
     col3.metric("Growth Multiple", f"{res['multiplier']:,.2f}x")
     col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
 
     df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
-    
-    # Graph now only displays Portfolio Value (Total Invested removed)
     fig = px.area(
         df_timeline, x="Year", y="Portfolio Value",
         labels={"value": "Amount ($)", "variable": "Metric"},
@@ -297,15 +291,12 @@ with tab2:
         res = calc.calculate_required_cagr(pv, target, years, annual_contribution=annual_contrib)
         
         col1, col2, col3, col4 = st.columns(4)
-        # Reordered metrics
         col1.metric("Required CAGR", f"{res['required_cagr_pct']:,.2f}%")
-        col2.metric("Total Gain Needed", f"${res['total_profit']:,.2f}")
+        col2.metric("Net Profit", f"${res['total_profit']:,.2f}")
         col3.metric("Growth Target", f"{res['multiplier']:,.2f}x")
         col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
 
         df_timeline = generate_growth_timeline(pv, res['required_cagr_pct'], years, annual_contrib)
-        
-        # Graph now only displays Portfolio Value (Total Invested removed)
         fig = px.line(
             df_timeline, x="Year", y="Portfolio Value",
             markers=True, title=f"Path to Reach ${target:,.2f} at {res['required_cagr_pct']:,.2f}% CAGR"
@@ -328,49 +319,45 @@ with tab2:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- TAB 3: STOCK SCANNER & TICKER PROJECTION ---
+# --- TAB 3: LIVE STOCK SCANNER ---
 with tab3:
-    st.subheader("Live US Stock Scanner & Ticker Analysis")
+    st.subheader("Live US Stock Scanner")
+    scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f", key="tab3_slider")
+    if st.button("Scan Stock Universe", key="tab3_btn"):
+        with st.spinner("Analyzing market data across stock pool..."):
+            stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
+            if stock_results:
+                st.success("Top matching low-volatility performers found:")
+                display_stock_scan_results(stock_results)
+            else:
+                st.warning("No stocks matched the criteria.")
+
+# --- TAB 4: FIND YOUR CAGR (TICKER ANALYSIS) ---
+with tab4:
+    st.subheader("Ticker Analysis & CAGR Lookup")
+    specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
+    hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10, format="%.2f", key="tab4_slider")
     
-    col_a, col_b = st.columns(2)
-    
-    # Everything in the Left Column
-    with col_a:
-        st.markdown("##### 1. Scan Stock Universe")
-        scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f")
-        if st.button("Scan Stock Universe"):
-            with st.spinner("Analyzing market data across stock pool..."):
-                stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
-                if stock_results:
-                    st.success("Top matching low-volatility performers found:")
-                    display_stock_scan_results(stock_results)
-                else:
-                    st.warning("No stocks matched the criteria.")
-        
-        st.markdown("<br><hr><br>", unsafe_allow_html=True)
-        
-        st.markdown("##### 2. Ticker Analysis")
-        specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
-        hist_years_input = st.slider("Historical Lookback (Years)", 1, 20, 10, format="%.2f")
-        
-        if st.button("Run Ticker Analysis"):
-            with st.spinner(f"Fetching {specific_ticker} data..."):
-                try:
-                    cagr = get_ticker_cagr(specific_ticker, years=int(hist_years_input))
-                    t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
-                    
-                    # Blue box above table
-                    st.info(f"**{specific_ticker}** achieved a **{cagr:,.2f}% CAGR** over the last {int(hist_years_input)} years.")
-                    
-                    # Table under blue box displaying Amount Invested, Amount Profit, and CAGR
-                    ticker_summary_df = pd.DataFrame([{
-                        "Ticker": specific_ticker,
-                        "Amount Invested ($)": f"${t_res['total_invested']:,.2f}",
-                        "Amount Profit ($)": f"${t_res['total_profit']:,.2f}",
-                        "CAGR (%)": f"{cagr:,.2f}%"
-                    }])
-                    ticker_summary_df.index = range(1, len(ticker_summary_df) + 1)
-                    st.dataframe(ticker_summary_df, use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"Could not analyze {specific_ticker}: {e}")
+    if st.button("Run Ticker Analysis", key="tab4_btn"):
+        with st.spinner(f"Fetching {specific_ticker} data..."):
+            try:
+                cagr = get_ticker_cagr(specific_ticker, years=int(hist_years_input))
+                t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
+                
+                # Blue box above table
+                st.info(f"**{specific_ticker}** achieved a **{cagr:,.2f}% CAGR** over the last {int(hist_years_input)} years.")
+                
+                # Table updated with Growth Multiple, Future Value, Net Profit, and CAGR
+                ticker_summary_df = pd.DataFrame([{
+                    "Ticker": specific_ticker,
+                    "Amount Invested ($)": f"${t_res['total_invested']:,.2f}",
+                    "Net Profit ($)": f"${t_res['total_profit']:,.2f}",
+                    "Future Value ($)": f"${t_res['future_value']:,.2f}",
+                    "Growth Multiple": f"{t_res['multiplier']:,.2f}x",
+                    "CAGR (%)": f"{cagr:,.2f}%"
+                }])
+                ticker_summary_df.index = range(1, len(ticker_summary_df) + 1)
+                st.dataframe(ticker_summary_df, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Could not analyze {specific_ticker}: {e}")
