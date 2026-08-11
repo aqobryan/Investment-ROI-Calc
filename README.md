@@ -9,6 +9,10 @@ A Python tool to calculate investment returns, find required CAGR growth targets
 
 ## How to Run
 
+1.) Visit this URL: https://investment-roi.streamlit.app/
+
+
+
 1. Clone the repository:
    ```bash
    git clone [https://github.com/YOUR-USERNAME/YOUR-REPO-NAME.git](https://github.com/YOUR-USERNAME/YOUR-REPO-NAME.git)
@@ -18,12 +22,6 @@ A Python tool to calculate investment returns, find required CAGR growth targets
 Install this:
 
 pip install -r requirements.txt
-
-pip install streamlit plotly
-
-Run this:
-
-streamlit run main.py
 
 
 
