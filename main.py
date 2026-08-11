@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import streamlit as st
+import plotly.express as px
 
 # Page Configuration
 st.set_page_config(
@@ -177,20 +178,37 @@ def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years
 
     return sorted(results, key=lambda x: x['volatility'])[:top_n]
 
+def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_contribution):
+    rate = annual_return_pct / 100.0
+    timeline_data = []
+    current_val = initial_amount
+    total_inv = initial_amount
+    
+    full_years = int(math.ceil(years))
+    for yr in range(full_years + 1):
+        if yr == 0:
+            timeline_data.append({"Year": 0, "Portfolio Value": round(initial_amount, 2), "Total Invested": round(initial_amount, 2)})
+            continue
+        
+        fraction = min(1.0, years - (yr - 1))
+        # Apply contribution and growth for the fraction of the year
+        current_val = (current_val + (annual_contribution * fraction)) * ((1 + rate) ** fraction)
+        total_inv += (annual_contribution * fraction)
+        
+        timeline_data.append({
+            "Year": round(yr if fraction == 1.0 else years, 1), 
+            "Portfolio Value": round(current_val, 2), 
+            "Total Invested": round(total_inv, 2)
+        })
+    return pd.DataFrame(timeline_data)
 
-# --- UI LAYOUT ---
+
+# --- MAIN APP LAYOUT ---
 st.title("📈 US Market Investment ROI Dashboard")
-st.markdown("Interactive portfolio growth projections, target goal calculators, and live US market stock scanning.")
+st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
 
-# Sidebar Configuration
-st.sidebar.header("⚙️ Configuration Controls")
-mode = st.sidebar.selectbox(
-    "Select Mode", 
-    ["Forward Growth Projection", "Find Required CAGR (Target)", "Stock Ticker Projection"]
-)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("💰 Financial Parameters")
+# Global Sidebar Parameters (Shared across tabs)
+st.sidebar.header("⚙️ Financial Inputs")
 pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0)
 
 freq_label = st.sidebar.selectbox("Contribution Frequency", ["None", "Annual", "Monthly", "Bi-weekly", "Weekly"])
@@ -201,14 +219,17 @@ if freq_label != "None":
     contrib_amount = st.sidebar.number_input("Contribution Amount ($)", min_value=0.0, value=500.0, step=100.0)
 
 annual_contrib = contrib_amount * freq_multipliers[freq_label]
-years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=1.0)
+years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=0.5)
 
 calc = ROICalculator()
 
-# --- MODE 1 ---
-if mode == "Forward Growth Projection":
-    st.subheader("📊 Forward Growth Projection")
-    rate = st.sidebar.slider("Expected Annual Return Rate (%)", min_value=-10.0, max_value=50.0, value=8.0, step=0.5)
+# Use clean tabs instead of dropdown menus
+tab1, tab2, tab3 = st.tabs(["📊 Growth Projection & Chart", "🎯 Target Goal Calculator", "🏷️ Live Stock Scanner"])
+
+# --- TAB 1: FORWARD GROWTH ---
+with tab1:
+    st.subheader("Forward Growth Projection & Compounding Curve")
+    rate = st.slider("Expected Annual Return Rate (%)", min_value=-10.0, max_value=50.0, value=8.0, step=0.5)
     
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
     
@@ -218,21 +239,19 @@ if mode == "Forward Growth Projection":
     col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
     col4.metric("Growth Multiple", f"{res['multiplier']}x")
 
-    st.markdown("---")
-    if st.checkbox("🔍 Scan US Market for stocks matching this return rate"):
-        with st.spinner("Scanning active stock universe..."):
-            stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
-            if stock_results:
-                st.success(f"Found top matching stocks with >= {rate}% historical CAGR:")
-                df_stocks = pd.DataFrame(stock_results)
-                df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
-                st.dataframe(df_stocks, use_container_width=True)
-            else:
-                st.warning("No stocks matched the criteria with sufficient historical data.")
+    # Interactive Plotly Chart
+    df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
+    fig = px.area(
+        df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
+        labels={"value": "Amount ($)", "variable": "Metric"},
+        title="Portfolio Growth Trajectory Over Time"
+    )
+    fig.update_layout(hovermode="x unified", template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
 
-# --- MODE 2 ---
-elif mode == "Find Required CAGR (Target)":
-    st.subheader("🎯 Target Goal Calculator")
+# --- TAB 2: TARGET GOAL ---
+with tab2:
+    st.subheader("Target Goal & Required CAGR Finder")
     target = st.number_input("Desired End Target Value ($)", min_value=100.0, value=100000.0, step=5000.0)
     
     try:
@@ -244,38 +263,44 @@ elif mode == "Find Required CAGR (Target)":
         col3.metric("Total Gain Needed", f"${res['total_profit']:,.2f}")
         col4.metric("Growth Target", f"{res['multiplier']}x")
 
-        st.markdown("---")
-        st.subheader("🔍 Matching Low-Volatility Stocks for your Target")
-        with st.spinner("Scanning US stocks matching required CAGR..."):
-            stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
-            if stock_results:
-                df_stocks = pd.DataFrame(stock_results)
-                df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
-                st.dataframe(df_stocks, use_container_width=True)
-            else:
-                st.warning("No stocks historically matched or exceeded this required CAGR.")
+        # Timeline representation of the target path
+        df_timeline = generate_growth_timeline(pv, res['required_cagr_pct'], years, annual_contrib)
+        fig = px.line(
+            df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
+            markers=True, title=f"Path to Reach ${target:,.2f} at {res['required_cagr_pct']}% CAGR"
+        )
+        fig.update_layout(hovermode="x unified", template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Error: {e}")
 
-# --- MODE 3 ---
-elif mode == "Stock Ticker Projection":
-    st.subheader("🏷️ Live US Stock Historical Projection")
-    symbol = st.sidebar.text_input("US Stock Ticker", value="AAPL").strip().upper()
-    hist_years = st.sidebar.slider("Historical Years to Analyze", min_value=1, max_value=20, value=10)
-
-    if st.sidebar.button("Run Projection"):
-        with st.spinner(f"Fetching historical data for {symbol}..."):
-            try:
-                cagr = get_ticker_cagr(symbol, years=hist_years)
-                res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
-                
-                st.info(f"**{symbol}** achieved a past **{hist_years}-year historical CAGR of {cagr}%**.")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
-                col2.metric("Projected Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']}%")
-                col3.metric("Projected Profit", f"${res['total_profit']:,.2f}")
-                col4.metric("Return Multiplier", f"{res['multiplier']}x")
-            except Exception as e:
-                st.error(f"Error processing {symbol}: {e}")
-                st.error(f"Error processing {symbol}: {e}")
+# --- TAB 3: STOCK SCANNER & TICKER PROJECTION ---
+with tab3:
+    st.subheader("Live US Stock Scanner & Ticker Analysis")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 0.0, 30.0, 10.0, 0.5)
+        if st.button("Scan Stock Universe"):
+            with st.spinner("Analyzing market data across stock pool..."):
+                stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
+                if stock_results:
+                    st.success("Top matching low-volatility performers found:")
+                    df_stocks = pd.DataFrame(stock_results)
+                    df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+                    st.dataframe(df_stocks.style.background_gradient(subset=["10yr CAGR (%)"], cmap="Greens"), use_container_width=True)
+                else:
+                    st.warning("No stocks matched the criteria.")
+                    
+    with col_b:
+        specific_ticker = st.text_input("Analyze Specific Ticker Symbol", value="AAPL").strip().upper()
+        hist_years = st.slider("Historical Lookback (Years)", 1, 20, 10)
+        if st.button("Run Ticker Analysis"):
+            with st.spinner(f"Fetching {specific_ticker} data..."):
+                try:
+                    cagr = get_ticker_cagr(specific_ticker, years=hist_years)
+                    t_res = calc.project_growth(pv, cagr, years, annual_contribution=annual_contrib)
+                    st.info(f"**{specific_ticker}** achieved a **{cagr}% CAGR** over the last {hist_years} years.")
+                    st.metric("Projected Portfolio Value", f"${t_res['future_value']:,.2f}", f"{t_res['total_roi_pct']}%")
+                except Exception as e:
+                    st.error(f"Could not analyze {specific_ticker}: {e}")
