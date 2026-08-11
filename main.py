@@ -153,12 +153,14 @@ def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years
             if np.isnan(actual_cagr) or np.isnan(volatility):
                 continue
             proj = calc.project_growth(initial_amount, actual_cagr, years, annual_contribution)
+            # Keeping financial results as floats to easily plot them later
             results.append({
                 "symbol": symbol,
                 "cagr": f"{round(actual_cagr, 2):,.2f}",
                 "volatility": f"{round(volatility, 2):,.2f}",
-                "future_value": f"${proj['future_value']:,.2f}",
-                "total_profit": f"${proj['total_profit']:,.2f}"
+                "invested": proj['total_invested'],
+                "future_value": proj['future_value'],
+                "total_profit": proj['total_profit']
             })
     except Exception:
         pass
@@ -192,11 +194,46 @@ def generate_growth_timeline(initial_amount, annual_return_pct, years, annual_co
     return pd.DataFrame(timeline_data)
 
 
+# --- HELPER FUNCTION TO DISPLAY TABLES & CHARTS CONSISTENTLY ---
+def display_stock_scan_results(stock_results):
+    df_stocks = pd.DataFrame(stock_results)
+    
+    # Format a copy of the dataframe purely for the visual table
+    df_table = df_stocks.copy()
+    df_table["invested"] = df_table["invested"].apply(lambda x: f"${x:,.2f}")
+    df_table["future_value"] = df_table["future_value"].apply(lambda x: f"${x:,.2f}")
+    df_table["total_profit"] = df_table["total_profit"].apply(lambda x: f"${x:,.2f}")
+    df_table.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Total Invested ($)", "Projected Value ($)", "Net Profit ($)"]
+    df_table.index = range(1, len(df_table) + 1)
+    
+    # Display the Table
+    st.dataframe(df_table, use_container_width=True)
+    
+    # Render the Bar Chart mapping Total Invested vs Projected Value
+    df_plot = df_stocks.melt(
+        id_vars=["symbol"], 
+        value_vars=["invested", "future_value"], 
+        var_name="Metric", 
+        value_name="Amount ($)"
+    )
+    df_plot["Metric"] = df_plot["Metric"].map({"invested": "Total Invested", "future_value": "Projected Value"})
+    
+    fig_bar = px.bar(
+        df_plot, x="symbol", y="Amount ($)", color="Metric", barmode="group",
+        title="Total Invested vs. Projected Value by Ticker"
+    )
+    fig_bar.update_layout(hovermode="x unified", template="plotly_dark")
+    
+    # The <extra></extra> removes the secondary trace box on hover to keep it clean
+    fig_bar.update_traces(hovertemplate="<b>%{data.name}</b>: $%{y:,.2f}<extra></extra>")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+
 # --- MAIN APP LAYOUT ---
 st.title("📈 US Market Investment ROI Dashboard")
 st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning.")
 
-# Global Sidebar Parameters (Restored!)
+# Global Sidebar Parameters 
 st.sidebar.header("⚙️ Financial Inputs")
 pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%.2f")
 
@@ -222,18 +259,22 @@ with tab1:
     res = calc.project_growth(pv, rate, years, annual_contribution=annual_contrib)
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
-    col2.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']:,.2f}%")
-    col3.metric("Net Profit", f"${res['total_profit']:,.2f}")
-    col4.metric("Growth Multiple", f"{res['multiplier']:,.2f}x")
+    # Reordered metrics: Total Invested is now next to Growth Multiple
+    col1.metric("Future Value", f"${res['future_value']:,.2f}", f"{res['total_roi_pct']:,.2f}%")
+    col2.metric("Net Profit", f"${res['total_profit']:,.2f}")
+    col3.metric("Growth Multiple", f"{res['multiplier']:,.2f}x")
+    col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
 
     df_timeline = generate_growth_timeline(pv, rate, years, annual_contrib)
+    
+    # Graph now only displays Portfolio Value (Total Invested removed)
     fig = px.area(
-        df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
+        df_timeline, x="Year", y="Portfolio Value",
         labels={"value": "Amount ($)", "variable": "Metric"},
         title="Portfolio Growth Trajectory Over Time"
     )
     fig.update_layout(hovermode="x unified", template="plotly_dark")
+    fig.update_traces(hovertemplate="<b>Value:</b> $%{y:,.2f}<extra></extra>")
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
@@ -243,10 +284,7 @@ with tab1:
     with st.spinner("Scanning stock pool..."):
         stock_results = scan_matching_stocks_cached(rate, pv, years, annual_contrib, hist_years=10, top_n=5)
         if stock_results:
-            df_stocks = pd.DataFrame(stock_results)
-            df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
-            df_stocks.index = range(1, len(df_stocks) + 1)
-            st.dataframe(df_stocks, use_container_width=True)
+            display_stock_scan_results(stock_results)
         else:
             st.warning("No stocks in the pool met or exceeded this specific return rate with sufficient history.")
 
@@ -259,17 +297,21 @@ with tab2:
         res = calc.calculate_required_cagr(pv, target, years, annual_contribution=annual_contrib)
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Invested", f"${res['total_invested']:,.2f}")
-        col2.metric("Required CAGR", f"{res['required_cagr_pct']:,.2f}%")
-        col3.metric("Total Gain Needed", f"${res['total_profit']:,.2f}")
-        col4.metric("Growth Target", f"{res['multiplier']:,.2f}x")
+        # Reordered metrics
+        col1.metric("Required CAGR", f"{res['required_cagr_pct']:,.2f}%")
+        col2.metric("Total Gain Needed", f"${res['total_profit']:,.2f}")
+        col3.metric("Growth Target", f"{res['multiplier']:,.2f}x")
+        col4.metric("Total Invested", f"${res['total_invested']:,.2f}")
 
         df_timeline = generate_growth_timeline(pv, res['required_cagr_pct'], years, annual_contrib)
+        
+        # Graph now only displays Portfolio Value (Total Invested removed)
         fig = px.line(
-            df_timeline, x="Year", y=["Portfolio Value", "Total Invested"],
+            df_timeline, x="Year", y="Portfolio Value",
             markers=True, title=f"Path to Reach ${target:,.2f} at {res['required_cagr_pct']:,.2f}% CAGR"
         )
         fig.update_layout(hovermode="x unified", template="plotly_dark")
+        fig.update_traces(hovertemplate="<b>Value:</b> $%{y:,.2f}<extra></extra>")
         st.plotly_chart(fig, use_container_width=True)
 
         st.markdown("---")
@@ -279,10 +321,7 @@ with tab2:
         with st.spinner("Scanning stock pool for required target..."):
             target_stock_results = scan_matching_stocks_cached(res['required_cagr_pct'], pv, years, annual_contrib, hist_years=10, top_n=5)
             if target_stock_results:
-                df_target_stocks = pd.DataFrame(target_stock_results)
-                df_target_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
-                df_target_stocks.index = range(1, len(df_target_stocks) + 1)
-                st.dataframe(df_target_stocks, use_container_width=True)
+                display_stock_scan_results(target_stock_results)
             else:
                 st.warning("No stocks in the pool met or exceeded this specific high required CAGR over the past 10 years.")
 
@@ -293,10 +332,9 @@ with tab2:
 with tab3:
     st.subheader("Live US Stock Scanner & Ticker Analysis")
     
-    # We keep columns so it stays confined to the "far left" visually
     col_a, col_b = st.columns(2)
     
-    # Everything is now in the Left Column
+    # Everything in the Left Column
     with col_a:
         st.markdown("##### 1. Scan Stock Universe")
         scan_cagr = st.slider("Minimum Historical CAGR Threshold (%)", 1.0, 30.0, 10.0, 0.5, format="%.2f")
@@ -305,10 +343,7 @@ with tab3:
                 stock_results = scan_matching_stocks_cached(scan_cagr, pv, years, annual_contrib, hist_years=10, top_n=8)
                 if stock_results:
                     st.success("Top matching low-volatility performers found:")
-                    df_stocks = pd.DataFrame(stock_results)
-                    df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
-                    df_stocks.index = range(1, len(df_stocks) + 1)
-                    st.dataframe(df_stocks, use_container_width=True)
+                    display_stock_scan_results(stock_results)
                 else:
                     st.warning("No stocks matched the criteria.")
         
