@@ -98,7 +98,8 @@ def get_expanded_stock_universe() -> list:
         if 1 <= len(t_clean) <= 5
     })
 
-@st.cache_data(ttl=3600)
+# Added show_spinner=False to suppress Streamlit's default loading message
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     hist = yf.Ticker(ticker_symbol).history(period=f"{years}y")
     if hist.empty or 'Close' not in hist.columns:
@@ -109,7 +110,8 @@ def get_ticker_cagr(ticker_symbol: str, years: int = 10) -> float:
     start_price, end_price = float(close_series.iloc[0]), float(close_series.iloc[-1])
     return round((((end_price / start_price) ** (1.0 / years)) - 1.0) * 100.0, 2)
 
-@st.cache_data(ttl=3600)
+# Added show_spinner=False to suppress Streamlit's default loading message
+@st.cache_data(ttl=3600, show_spinner=False)
 def scan_matching_stocks_cached(target_cagr: float, initial_amount: float, years: float, annual_contribution: float, hist_years: int, top_n: int):
     stock_universe = get_expanded_stock_universe()
     results = []
@@ -245,6 +247,7 @@ with tab1:
         if stock_results:
             df_stocks = pd.DataFrame(stock_results)
             df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+            df_stocks.index = range(1, len(df_stocks) + 1)
             st.dataframe(df_stocks, use_container_width=True)
         else:
             st.warning("No stocks in the pool met or exceeded this specific return rate with sufficient history.")
@@ -280,6 +283,7 @@ with tab2:
             if target_stock_results:
                 df_target_stocks = pd.DataFrame(target_stock_results)
                 df_target_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+                df_target_stocks.index = range(1, len(df_target_stocks) + 1)
                 st.dataframe(df_target_stocks, use_container_width=True)
             else:
                 st.warning("No stocks in the pool met or exceeded this specific high required CAGR over the past 10 years.")
@@ -301,6 +305,7 @@ with tab3:
                     st.success("Top matching low-volatility performers found:")
                     df_stocks = pd.DataFrame(stock_results)
                     df_stocks.columns = ["Ticker", "10yr CAGR (%)", "Ann. Volatility (%)", "Projected Value ($)", "Net Profit ($)"]
+                    df_stocks.index = range(1, len(df_stocks) + 1)
                     st.dataframe(df_stocks, use_container_width=True)
                 else:
                     st.warning("No stocks matched the criteria.")
