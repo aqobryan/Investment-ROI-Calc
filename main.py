@@ -256,21 +256,32 @@ def display_stock_scan_results(stock_results, show_trajectory=True, key_prefix="
 st.title("📈 US Market Investment ROI Dashboard")
 st.markdown("Interactive portfolio tracking, compound growth charts, and automated stock universe scanning. **(Not Financial Advice)**")
 
-# Global Sidebar Parameters 
-st.sidebar.header("⚙️ Financial Inputs")
-pv = st.sidebar.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%g")
+st.markdown("---")
+st.subheader("⚙️ Financial Inputs")
 
-freq_label = st.sidebar.selectbox("Contribution Frequency", ["None", "Annual", "Monthly", "Bi-weekly", "Weekly"])
+# Global Parameters moved to columns
+input_col1, input_col2, input_col3, input_col4 = st.columns(4)
+
+with input_col1:
+    pv = st.number_input("Initial Investment ($)", min_value=1.0, value=10000.0, step=1000.0, format="%g")
+
+with input_col2:
+    freq_label = st.selectbox("Contribution Frequency", ["None", "Annual", "Monthly", "Bi-weekly", "Weekly"])
+
 freq_multipliers = {"None": 0.0, "Annual": 1.0, "Monthly": 12.0, "Bi-weekly": 26.0, "Weekly": 52.0}
-
 contrib_amount = 0.0
-if freq_label != "None":
-    contrib_amount = st.sidebar.number_input("Contribution Amount ($)", min_value=0.0, value=500.0, step=100.0, format="%g")
+
+with input_col3:
+    if freq_label != "None":
+        contrib_amount = st.number_input("Contribution Amount ($)", min_value=0.0, value=500.0, step=100.0, format="%g")
+
+with input_col4:
+    years = st.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=0.5, format="%g")
 
 annual_contrib = contrib_amount * freq_multipliers[freq_label]
-years = st.sidebar.number_input("Holding Period (Years)", min_value=0.5, value=10.0, step=0.5, format="%g")
 
 calc = ROICalculator()
+st.markdown("---")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Growth Projection & Chart", 
